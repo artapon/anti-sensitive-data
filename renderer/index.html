@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+<title>Sensitive Data Censor</title>
+<style>
+  :root {
+    --bg:           #0f1115;
+    --panel:        #171a21;
+    --panel2:       #1c2029;
+    --border:       #2a2f3a;
+    --text:         #e6e8eb;
+    --muted:        #9aa3af;
+    --accent:       #5b8cff;
+    --accent-hover: #4774e6;
+    --success:      #4cd97b;
+    --danger:       #ff6b6b;
+    --warn:         #f5a623;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px 32px 32px;
+    min-height: 100vh;
+  }
+
+  /* ── Header ──────────────────────────────────────── */
+  .header {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 4px;
+  }
+  h1 { font-size: 20px; font-weight: 700; }
+  .badge {
+    font-size: 11px;
+    font-weight: 600;
+    background: #1e2430;
+    color: var(--accent);
+    border: 1px solid #2e3a55;
+    border-radius: 20px;
+    padding: 2px 8px;
+    letter-spacing: .4px;
+  }
+  .subtitle { color: var(--muted); margin-bottom: 20px; font-size: 13px; line-height: 1.5; }
+
+  /* ── Panels ──────────────────────────────────────── */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+  .panel-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .6px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+
+  /* ── Inputs ──────────────────────────────────────── */
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  textarea, input[type=text] {
+    width: 100%;
+    background: #0c0e12;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    resize: vertical;
+    transition: border-color .15s;
+    outline: none;
+  }
+  textarea:focus, input[type=text]:focus { border-color: var(--accent); }
+  textarea { min-height: 150px; }
+
+  select {
+    width: 100%;
+    padding: 10px 12px;
+    background: #0c0e12;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    outline: none;
+    transition: border-color .15s;
+    cursor: pointer;
+  }
+  select:focus { border-color: var(--accent); }
+
+  /* ── Layout helpers ──────────────────────────────── */
+  .row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .col { flex: 1; min-width: 200px; }
+
+  /* ── Detector toggles ────────────────────────────── */
+  .toggles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 7px;
+    margin-top: 8px;
+  }
+  .toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #0c0e12;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    user-select: none;
+  }
+  .toggle:hover { border-color: var(--accent); background: #111520; }
+  .toggle input[type=checkbox] { width: auto; accent-color: var(--accent); cursor: pointer; }
+
+  /* ── Custom words row ────────────────────────────── */
+  .custom-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+    margin-top: 14px;
+  }
+  .custom-row .input-wrap { flex: 1; }
+  .custom-row .input-wrap label { margin-bottom: 6px; }
+
+  .save-indicator {
+    font-size: 12px;
+    color: var(--success);
+    opacity: 0;
+    transition: opacity .3s;
+    white-space: nowrap;
+    align-self: center;
+    padding-bottom: 1px;
+  }
+  .save-indicator.visible { opacity: 1; }
+
+  /* ── Buttons ─────────────────────────────────────── */
+  button {
+    background: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 9px 16px;
+    font-size: 13.5px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background .15s, transform .1s;
+    white-space: nowrap;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:active { transform: scale(.97); }
+
+  button.secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-weight: 500;
+  }
+  button.secondary:hover { background: #1d212a; border-color: #3a4150; }
+
+  button.save-btn {
+    background: #1f3a28;
+    border: 1px solid #2a5a38;
+    color: var(--success);
+    font-weight: 600;
+    padding: 9px 14px;
+  }
+  button.save-btn:hover { background: #2a4d35; }
+
+  /* ── Actions bar ─────────────────────────────────── */
+  .actions {
+    display: flex;
+    gap: 10px;
+    margin: 12px 0;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .status {
+    font-size: 12.5px;
+    color: var(--success);
+    min-height: 18px;
+    transition: opacity .3s;
+  }
+
+  /* ── Auto-censor row ─────────────────────────────── */
+  .auto-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--muted);
+    cursor: pointer;
+    user-select: none;
+  }
+  .auto-row input { accent-color: var(--accent); }
+
+  /* ── Output ──────────────────────────────────────── */
+  .output-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .count-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #1e2430;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 2px 10px;
+    font-size: 12px;
+  }
+  .count-badge.has-hits { color: var(--warn); border-color: #4a3a1a; background: #2a2210; }
+
+  .output {
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: #0c0e12;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+    min-height: 150px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+  .output:not(:empty) { color: var(--text); }
+
+  /* ── Clipboard intercept toggle ─────────────────── */
+  .intercept-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+  .intercept-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #111824;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 13px;
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+    transition: border-color .15s, background .15s;
+  }
+  .intercept-toggle:hover { border-color: var(--accent); background: #141d2e; }
+  .intercept-toggle input { accent-color: var(--accent); cursor: pointer; }
+  .intercept-toggle.active { border-color: #2e4a8a; background: #0f1a30; }
+  .intercept-hint {
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  .kbd {
+    display: inline-block;
+    background: #1e2430;
+    border: 1px solid #3a4250;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    color: var(--text);
+    line-height: 1.6;
+  }
+  /* ── Background clipboard monitor ───────────────── */
+  .monitor-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+  }
+  .monitor-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #111824;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 13px;
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+    transition: border-color .15s, background .15s;
+  }
+  .monitor-toggle:hover { border-color: #e6a020; background: #1a1808; }
+  .monitor-toggle input { accent-color: #f5a623; cursor: pointer; }
+  .monitor-toggle.active { border-color: #6a4a00; background: #1a1200; }
+  .pulse-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--warn);
+    box-shadow: 0 0 0 0 rgba(245,166,35,.6);
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity .3s;
+  }
+  .pulse-dot.active {
+    opacity: 1;
+    animation: pulse-ring 1.4s ease-out infinite;
+  }
+  @keyframes pulse-ring {
+    0%   { box-shadow: 0 0 0 0 rgba(245,166,35,.7); }
+    70%  { box-shadow: 0 0 0 7px rgba(245,166,35,0); }
+    100% { box-shadow: 0 0 0 0 rgba(245,166,35,0); }
+  }
+  .monitor-hint {
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+
+  /* ── Scrollbar ───────────────────────────────────── */
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2a2f3a; border-radius: 6px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a4150; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Sensitive Data Censor</h1>
+  <span class="badge">DESKTOP</span>
+</div>
+<div class="subtitle">
+  Runs locally — nothing is sent anywhere. Paste text, detect common secrets, add custom rules, and copy the censored result.<br>
+  Custom words and settings are saved automatically to your local profile.
+</div>
+
+<!-- Input -->
+<div class="panel">
+  <div class="panel-title">Input Text</div>
+  <textarea id="inputText" placeholder="Paste logs, connection strings, config files, env vars…"></textarea>
+  <label class="auto-row">
+    <input type="checkbox" id="autoCensor" checked>
+    Auto-censor while typing
+  </label>
+
+  <!-- Clipboard intercept setting -->
+  <div class="intercept-row" style="margin-top:12px;">
+    <label class="intercept-toggle" id="interceptToggleLabel" for="clipboardIntercept">
+      <input type="checkbox" id="clipboardIntercept" checked>
+      🔒 Auto-censor <span class="kbd">Ctrl+C</span> and <span class="kbd">Ctrl+V</span>
+    </label>
+    <span class="intercept-hint" id="interceptHint">
+      Enabled — copies &amp; pastes are automatically censored before hitting the clipboard
+    </span>
+  </div>
+
+  <!-- Background clipboard monitor -->
+  <div class="monitor-row" style="margin-top:8px;">
+    <label class="monitor-toggle" id="bgMonitorLabel" for="bgMonitor">
+      <span class="pulse-dot" id="pulseDot"></span>
+      <input type="checkbox" id="bgMonitor">
+      🌐 Monitor clipboard in background
+    </label>
+    <span class="monitor-hint" id="bgMonitorHint">
+      Disabled — only intercepts Ctrl+C &amp; Ctrl+V inside this app
+    </span>
+  </div>
+</div>
+
+<!-- Detectors + options -->
+<div class="panel">
+  <div class="panel-title">Built-in Detectors</div>
+  <div class="toggles" id="toggleList"></div>
+
+  <div class="custom-row" style="margin-top:16px;">
+    <div class="row" style="flex:1; gap:14px; flex-wrap:wrap;">
+      <div class="col">
+        <label for="customRules">Custom words / patterns <span style="color:#555">(comma separated, supports regex)</span></label>
+        <input type="text" id="customRules" placeholder="e.g. ProjectX, internal-codename, ACME Corp">
+      </div>
+      <div class="col" style="max-width:220px;">
+        <label for="maskStyle">Mask style</label>
+        <select id="maskStyle">
+          <option value="full">**** (fixed)</option>
+          <option value="stars">Same length (•••••)</option>
+          <option value="partial">Show last 4 (****1234)</option>
+          <option value="label">[REDACTED]</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Save words row -->
+  <div style="display:flex; align-items:center; gap:10px; margin-top:10px;">
+    <button class="save-btn" id="saveWordsBtn" onclick="saveCustomWords()">💾 Save Words</button>
+    <span class="save-indicator" id="saveIndicator">✓ Saved to profile</span>
+  </div>
+</div>
+
+<!-- Actions -->
+<div class="actions">
+  <button onclick="runCensor()">🔍 Censor Text</button>
+  <button class="secondary" onclick="copyOutput()">📋 Copy Output</button>
+  <button class="secondary" onclick="clearAll()">🗑 Clear</button>
+  <span class="status" id="status"></span>
+</div>
+
+<!-- Output -->
+<div class="panel">
+  <div class="output-header">
+    <div class="panel-title" style="margin:0;">Output</div>
+    <span class="count-badge" id="matchCount">0 items censored</span>
+  </div>
+  <div id="output" class="output"></div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// Detectors
+// ─────────────────────────────────────────────────────────────────────────────
+const detectors = [
+  { id: 'dbcreds', label: 'DB connection creds (all common DBs)', default: true,
+    regex: /((?:jdbc:)?(?:mongodb(?:\+srv)?|postgres(?:ql)?|mysql|mariadb|rediss?|cassandra|couchbases?|neo4j(?:\+s|\+ssc)?|amqps?|rabbitmq|elasticsearch|mssql|sqlserver|oracle|db2|snowflake|clickhouse|cockroachdb|firebird|ftps?|sftp|smtp|imap|ldap|nats):\/\/)([^:\/\s@]+):([^@\/\s]+)@/gi,
+    replace: (m, p1) => p1 + '{{USER}}:{{PASS}}@' },
+
+  { id: 'dbcreds_kv', label: 'DB creds (key=value / JDBC params)', default: true,
+    regex: /\b(uid|user|username|userid|db[_-]?user)\s*=\s*([^;&\s]+)\s*;?\s*(pwd|pass|password|db[_-]?pass)\s*=\s*([^;&\s]+)/gi,
+    replace: (m, p1, p2, p3) => p1 + '={{USER}};' + p3 + '={{PASS}}' },
+
+  { id: 'envfile', label: '.env file vars (USERNAME / PASSWORD / URL)', default: true,
+    regex: /^(\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*(?:USER(?:NAME)?|LOGIN|UID|PASS(?:WORD)?|PWD|SECRET|CONN(?:ECTION)?_?STR(?:ING)?|DATABASE_URL|DB_URI|DSN)[A-Za-z0-9_]*\s*=\s*)("[^"]*"|'[^']*'|\S+)/gim,
+    replace: (m, p1) => p1 + '{{VALUE}}' },
+
+  { id: 'kv', label: 'Password / API key / token (key=value)', default: true,
+    regex: /\b(password|passwd|pwd|secret|api[_-]?key|apikey|token|access[_-]?key|auth)\s*[:=]\s*("[^"]*"|'[^']*'|[^\s,;&]+)/gi,
+    replace: (m, p1) => p1 + '={{VALUE}}' },
+
+  { id: 'awskey', label: 'AWS access key', default: true,
+    regex: /\bAKIA[0-9A-Z]{16}\b/g, replace: () => '{{VALUE}}' },
+
+  { id: 'jwt', label: 'JWT tokens', default: true,
+    regex: /\beyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g, replace: () => '{{VALUE}}' },
+
+  { id: 'ip', label: 'IPv4 addresses', default: true,
+    regex: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g, replace: () => '{{VALUE}}' },
+
+  { id: 'email', label: 'Email addresses', default: true,
+    regex: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, replace: () => '{{VALUE}}' },
+
+  { id: 'phone', label: 'Phone numbers', default: false,
+    regex: /\b(?:\+?\d{1,3}[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}\b/g, replace: () => '{{VALUE}}' },
+
+  { id: 'card', label: 'Credit card numbers', default: true,
+    regex: /\b(?:\d[ -]*?){13,16}\b/g, replace: (m) => '{{VALUE:' + m.replace(/\D/g, '') + '}}' },
+
+  { id: 'ssn', label: 'US SSN (###-##-####)', default: true,
+    regex: /\b\d{3}-\d{2}-\d{4}\b/g, replace: () => '{{VALUE}}' },
+
+  { id: 'privkey', label: 'Private key blocks', default: true,
+    regex: /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
+    replace: () => '{{VALUE:PRIVATE_KEY_BLOCK}}' },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Build toggle list
+// ─────────────────────────────────────────────────────────────────────────────
+const toggleList = document.getElementById('toggleList');
+detectors.forEach(d => {
+  const div = document.createElement('div');
+  div.className = 'toggle';
+  div.innerHTML = `<input type="checkbox" id="d_${d.id}" ${d.default ? 'checked' : ''}><label for="d_${d.id}" style="margin:0;cursor:pointer;">${d.label}</label>`;
+  toggleList.appendChild(div);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Persistence — load on startup
+// ─────────────────────────────────────────────────────────────────────────────
+async function loadPersistedData() {
+  if (!window.electronAPI) return; // safety guard (plain browser fallback)
+
+  // Load custom words
+  const { words } = await window.electronAPI.loadCustomWords();
+  if (words && words.length > 0) {
+    document.getElementById('customRules').value = words.join(', ');
+  }
+
+  // Load settings
+  const settings = await window.electronAPI.loadSettings();
+  if (settings.maskStyle) {
+    document.getElementById('maskStyle').value = settings.maskStyle;
+  }
+  if (settings.toggles) {
+    detectors.forEach(d => {
+      const el = document.getElementById('d_' + d.id);
+      if (el && settings.toggles[d.id] !== undefined) {
+        el.checked = settings.toggles[d.id];
+      }
+    });
+  }
+  if (settings.clipboardIntercept !== undefined) {
+    document.getElementById('clipboardIntercept').checked = settings.clipboardIntercept;
+    updateInterceptUI(settings.clipboardIntercept);
+  }
+  if (settings.bgMonitor) {
+    document.getElementById('bgMonitor').checked = true;
+    startBgMonitor();
+  }
+
+  // Run initial censor pass if there's something in the input
+  if (document.getElementById('inputText').value) runCensor();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Save custom words
+// ─────────────────────────────────────────────────────────────────────────────
+async function saveCustomWords() {
+  const raw = document.getElementById('customRules').value;
+  const words = raw.split(',').map(w => w.trim()).filter(Boolean);
+
+  if (window.electronAPI) {
+    await window.electronAPI.saveCustomWords(words);
+  }
+
+  const indicator = document.getElementById('saveIndicator');
+  indicator.classList.add('visible');
+  setTimeout(() => indicator.classList.remove('visible'), 2200);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Save settings (mask style + toggles + clipboard intercept)
+// ─────────────────────────────────────────────────────────────────────────────
+async function saveSettings() {
+  if (!window.electronAPI) return;
+  const toggles = {};
+  detectors.forEach(d => {
+    const el = document.getElementById('d_' + d.id);
+    if (el) toggles[d.id] = el.checked;
+  });
+  const maskStyle          = document.getElementById('maskStyle').value;
+  const clipboardIntercept = document.getElementById('clipboardIntercept').checked;
+  const bgMonitor          = document.getElementById('bgMonitor').checked;
+  await window.electronAPI.saveSettings({ maskStyle, toggles, clipboardIntercept, bgMonitor });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Background clipboard monitor
+// ─────────────────────────────────────────────────────────────────────────────
+let _bgMonitorTimer  = null;
+let _lastClipText    = null;   // tracks last seen clipboard value
+let _bgBusy          = false;  // prevents re-entrant censor calls
+
+async function startBgMonitor() {
+  if (_bgMonitorTimer) return; // already running
+
+  // Seed the last-seen value so we don't censor on first tick
+  try { _lastClipText = await window.electronAPI.clipboardRead(); } catch { _lastClipText = ''; }
+
+  _bgMonitorTimer = setInterval(async () => {
+    if (_bgBusy) return;
+    _bgBusy = true;
+    try {
+      const current = await window.electronAPI.clipboardRead();
+      if (current && current !== _lastClipText) {
+        const { customRules, maskStyle } = getCensorParams();
+        const { result, count } = censorText(current, customRules, maskStyle);
+
+        if (count > 0) {
+          // Write censored version back to clipboard
+          await window.electronAPI.clipboardWrite(result);
+          _lastClipText = result; // update so next tick doesn't re-censor
+
+          // Fill input box + trigger censor display
+          const inputBox = document.getElementById('inputText');
+          inputBox.value = current;
+          inputBox.dispatchEvent(new Event('input', { bubbles: true }));
+
+          showClipboardStatus(`🌐 Background — ${count} item${count === 1 ? '' : 's'} censored from clipboard`);
+        } else {
+          // No sensitive items found; update track text to prevent checking same text again
+          _lastClipText = current;
+        }
+      }
+    } catch (err) { /* ignore transient IPC errors */ }
+    _bgBusy = false;
+  }, 250);
+
+  updateBgMonitorUI(true);
+}
+
+function stopBgMonitor() {
+  if (_bgMonitorTimer) { clearInterval(_bgMonitorTimer); _bgMonitorTimer = null; }
+  updateBgMonitorUI(false);
+}
+
+function updateBgMonitorUI(enabled) {
+  const label = document.getElementById('bgMonitorLabel');
+  const hint  = document.getElementById('bgMonitorHint');
+  const dot   = document.getElementById('pulseDot');
+  if (enabled) {
+    label.classList.add('active');
+    dot.classList.add('active');
+    hint.textContent = 'Active — watching clipboard every 250 ms, auto-censoring any Ctrl+C from any app';
+    hint.style.color = 'var(--warn)';
+  } else {
+    label.classList.remove('active');
+    dot.classList.remove('active');
+    hint.textContent = 'Disabled — only intercepts Ctrl+C & Ctrl+V inside this app';
+    hint.style.color = 'var(--muted)';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Clipboard intercept UI helper
+// ─────────────────────────────────────────────────────────────────────────────
+function updateInterceptUI(enabled) {
+  const label = document.getElementById('interceptToggleLabel');
+  const hint  = document.getElementById('interceptHint');
+  if (enabled) {
+    label.classList.add('active');
+    hint.textContent = 'Enabled — copies & pastes are automatically censored before hitting the clipboard';
+    hint.style.color = 'var(--success)';
+  } else {
+    label.classList.remove('active');
+    hint.textContent = 'Disabled — Ctrl+C and Ctrl+V behave normally';
+    hint.style.color = 'var(--muted)';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Clipboard intercept — Ctrl+C and Ctrl+V
+// ─────────────────────────────────────────────────────────────────────────────
+function getCensorParams() {
+  return {
+    customRules: document.getElementById('customRules').value.split(','),
+    maskStyle:   document.getElementById('maskStyle').value,
+  };
+}
+
+function showClipboardStatus(msg, type = 'success') {
+  const status = document.getElementById('status');
+  status.style.color = type === 'success' ? 'var(--success)' : 'var(--warn)';
+  status.textContent = msg;
+  setTimeout(() => { if (status.textContent === msg) status.textContent = ''; }, 2500);
+}
+
+document.addEventListener('keydown', async (e) => {
+  if (!document.getElementById('clipboardIntercept').checked) return;
+
+  // ── Ctrl+C: censor selected text before copying ──────────────────────────
+  if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key === 'c') {
+    // For textarea/input, window.getSelection() is empty — read from element
+    let selection = '';
+    const active = document.activeElement;
+    if (active && (active.tagName === 'TEXTAREA' ||
+        (active.tagName === 'INPUT' && active.type === 'text'))) {
+      selection = active.value.substring(active.selectionStart, active.selectionEnd);
+    } else {
+      selection = window.getSelection()?.toString() || '';
+    }
+
+    if (!selection) return; // nothing selected → let browser handle
+
+    e.preventDefault();
+    const { customRules, maskStyle } = getCensorParams();
+    const { result, count } = censorText(selection, customRules, maskStyle);
+
+    // ── Auto-fill Input Text with the selected text ──
+    const inputBox = document.getElementById('inputText');
+    inputBox.value = selection;
+    inputBox.dispatchEvent(new Event('input', { bubbles: true })); // triggers auto-censor
+
+    try {
+      await window.electronAPI.clipboardWrite(result);
+      showClipboardStatus(`✂️ Ctrl+C — ${count} item${count === 1 ? '' : 's'} censored · input filled · clipboard ready`);
+    } catch (err) {
+      showClipboardStatus('⚠️ Clipboard write failed', 'warn');
+    }
+    return;
+  }
+
+  // ── Ctrl+V: censor clipboard content before pasting ──────────────────────
+  if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key === 'v') {
+    const active = document.activeElement;
+    const isEditable = active && (active.tagName === 'TEXTAREA' ||
+      (active.tagName === 'INPUT' && active.type === 'text'));
+    if (!isEditable) return; // non-text target → let browser handle
+
+    e.preventDefault();
+    let clipText;
+    try {
+      clipText = await window.electronAPI.clipboardRead();
+    } catch (err) {
+      showClipboardStatus('⚠️ Clipboard read failed', 'warn');
+      return;
+    }
+
+    const { customRules, maskStyle } = getCensorParams();
+    const { result, count } = censorText(clipText, customRules, maskStyle);
+
+    // Insert censored text at cursor position, replacing any selection
+    const start = active.selectionStart ?? active.value.length;
+    const end   = active.selectionEnd   ?? active.value.length;
+    active.value = active.value.slice(0, start) + result + active.value.slice(end);
+    active.selectionStart = active.selectionEnd = start + result.length;
+    active.dispatchEvent(new Event('input', { bubbles: true }));
+
+    showClipboardStatus(`📋 Ctrl+V — ${count} item${count === 1 ? '' : 's'} censored before paste`);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Masking
+// ─────────────────────────────────────────────────────────────────────────────
+function applyMask(value, style) {
+  const digits = value.replace(/[^0-9A-Za-z]/g, '');
+  switch (style) {
+    case 'stars':
+      return '•'.repeat(Math.min(value.length, 24)) || '••••';
+    case 'partial': {
+      const tail = digits.slice(-4);
+      return tail ? '*'.repeat(Math.max(value.length - 4, 4)) + tail : '****';
+    }
+    case 'label':
+      return '[REDACTED]';
+    case 'full':
+    default:
+      return '****';
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Core censor engine
+// ─────────────────────────────────────────────────────────────────────────────
+function censorText(text, customRules, maskStyle) {
+  let result = text;
+  let count = 0;
+
+  detectors.forEach(d => {
+    const enabled = document.getElementById('d_' + d.id).checked;
+    if (!enabled) return;
+    result = result.replace(d.regex, (...args) => {
+      count++;
+      const built = d.replace(...args);
+      if (built.includes('{{USER}}')) {
+        return built
+          .replace('{{USER}}', applyMask('user', maskStyle))
+          .replace('{{PASS}}', applyMask('pass', maskStyle));
+      }
+      const valMatch = built.match(/\{\{VALUE(?::(.*))?}}/);
+      if (valMatch) {
+        const raw = valMatch[1] !== undefined ? valMatch[1] : args[0];
+        return built.replace(/\{\{VALUE(?::.*)?}}/, applyMask(raw, maskStyle));
+      }
+      return built;
+    });
+  });
+
+  customRules.forEach(word => {
+    const trimmed = word.trim();
+    if (!trimmed) return;
+    let regex;
+    try { regex = new RegExp(trimmed, 'gi'); } catch { return; }
+    result = result.replace(regex, m => { count++; return applyMask(m, maskStyle); });
+  });
+
+  return { result, count };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI actions
+// ─────────────────────────────────────────────────────────────────────────────
+function runCensor() {
+  const input      = document.getElementById('inputText').value;
+  const customRules = document.getElementById('customRules').value.split(',');
+  const maskStyle  = document.getElementById('maskStyle').value;
+
+  const { result, count } = censorText(input, customRules, maskStyle);
+
+  document.getElementById('output').innerText = result;
+
+  const badge = document.getElementById('matchCount');
+  badge.textContent = count + ' item' + (count === 1 ? '' : 's') + ' censored';
+  badge.className = 'count-badge' + (count > 0 ? ' has-hits' : '');
+
+  document.getElementById('status').textContent = '';
+}
+
+async function copyOutput() {
+  const text = document.getElementById('output').innerText;
+  const status = document.getElementById('status');
+  try {
+    await navigator.clipboard.writeText(text);
+    status.style.color = 'var(--success)';
+    status.textContent = '✓ Copied to clipboard';
+    setTimeout(() => status.textContent = '', 2000);
+  } catch {
+    status.style.color = 'var(--danger)';
+    status.textContent = 'Copy failed — select manually.';
+  }
+}
+
+function clearAll() {
+  document.getElementById('inputText').value = '';
+  document.getElementById('customRules').value = '';
+  document.getElementById('output').innerText = '';
+  document.getElementById('matchCount').textContent = '0 items censored';
+  document.getElementById('matchCount').className = 'count-badge';
+  document.getElementById('status').textContent = '';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Event listeners
+// ─────────────────────────────────────────────────────────────────────────────
+document.getElementById('inputText').addEventListener('input', () => {
+  if (document.getElementById('autoCensor').checked) runCensor();
+});
+document.getElementById('customRules').addEventListener('input', () => {
+  if (document.getElementById('autoCensor').checked) runCensor();
+});
+document.getElementById('maskStyle').addEventListener('change', () => {
+  saveSettings();
+  if (document.getElementById('autoCensor').checked) runCensor();
+});
+toggleList.addEventListener('change', () => {
+  saveSettings();
+  if (document.getElementById('autoCensor').checked) runCensor();
+});
+document.getElementById('clipboardIntercept').addEventListener('change', (e) => {
+  updateInterceptUI(e.target.checked);
+  saveSettings();
+});
+document.getElementById('bgMonitor').addEventListener('change', (e) => {
+  if (e.target.checked) startBgMonitor(); else stopBgMonitor();
+  saveSettings();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────────────────────────────
+loadPersistedData();
+</script>
+
+</body>
+</html>
