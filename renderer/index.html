@@ -394,8 +394,8 @@
   <div class="custom-row" style="margin-top:16px;">
     <div class="row" style="flex:1; gap:14px; flex-wrap:wrap;">
       <div class="col">
-        <label for="customRules">Custom words / patterns <span style="color:#555">(comma separated, supports regex)</span></label>
-        <input type="text" id="customRules" placeholder="e.g. ProjectX, internal-codename, ACME Corp">
+        <label for="customRules">Custom words / patterns <span style="color:#555">(comma separated · regex &amp; key=value supported)</span></label>
+        <input type="text" id="customRules" placeholder="e.g. ProjectX, internal-codename, MY_API_KEY=, slack_hook=">
       </div>
       <div class="col" style="max-width:220px;">
         <label for="maskStyle">Mask style</label>
@@ -450,9 +450,44 @@ const detectors = [
     regex: /^(\s*(?:export\s+)?[A-Za-z_][A-Za-z0-9_]*(?:USER(?:NAME)?|LOGIN|UID|PASS(?:WORD)?|PWD|SECRET|CONN(?:ECTION)?_?STR(?:ING)?|DATABASE_URL|DB_URI|DSN)[A-Za-z0-9_]*\s*=\s*)("[^"]*"|'[^']*'|\S+)/gim,
     replace: (m, p1) => p1 + '{{VALUE}}' },
 
-  { id: 'kv', label: 'Password / API key / token (key=value)', default: true,
-    regex: /\b(password|passwd|pwd|secret|api[_-]?key|apikey|token|access[_-]?key|auth)\s*[:=]\s*("[^"]*"|'[^']*'|[^\s,;&]+)/gi,
-    replace: (m, p1) => p1 + '={{VALUE}}' },
+  { id: 'kv', label: 'Secret / key / token / client id (key=value)', default: true,
+    regex: /\b(passwords?|passwd|pwd|secret|client[_-]?secret|app[_-]?secret|signing[_-]?secret|api[_-]?keys?|apikey|secret[_-]?key|access[_-]?key|access[_-]?token|refresh[_-]?token|session[_-]?token|bot[_-]?token|auth[_-]?token|id[_-]?token|tokens?|client[_-]?id|app[_-]?id|webhook(?:[_-]?url)?|hook[_-]?url|private[_-]?token|auth|credentials?)\s*([:=])\s*("[^"]*"|'[^']*'|[^\s,;&]+)/gi,
+    replace: (m, p1, sep, val) => p1 + sep + '{{VALUE:' + val.replace(/^["']|["']$/g, '') + '}}' },
+
+  { id: 'slack_webhook', label: 'Slack incoming webhook URLs', default: true,
+    regex: /https:\/\/hooks\.slack\.com\/(?:services|workflows)\/[A-Za-z0-9_\/+-]+/gi,
+    replace: () => '{{VALUE:SLACK_WEBHOOK}}' },
+
+  { id: 'ngrok_url', label: 'ngrok tunnel URLs', default: true,
+    regex: /\bhttps?:\/\/[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.ngrok(?:-free)?\.(?:io|app|dev)\b[^\s'"<>]*/gi,
+    replace: () => '{{VALUE:NGROK_URL}}' },
+
+  { id: 'cloudflare_tunnel', label: 'Cloudflare tunnel URLs', default: true,
+    regex: /\bhttps?:\/\/[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:trycloudflare\.com|cfargotunnel\.com)\b[^\s'"<>]*/gi,
+    replace: () => '{{VALUE:CF_TUNNEL_URL}}' },
+
+  { id: 'slack_token', label: 'Slack tokens (xoxb / xoxp / xapp …)', default: true,
+    regex: /\bxox[baprse]-(?:[A-Za-z0-9]+-)*[A-Za-z0-9]{8,}\b/gi, replace: () => '{{VALUE}}' },
+
+  { id: 'telegram_token', label: 'Telegram bot tokens', default: true,
+    regex: /\b\d{8,10}:[A-Za-z0-9_-]{35}\b/g, replace: () => '{{VALUE}}' },
+
+  { id: 'github_token', label: 'GitHub tokens (ghp_ / gho_ / pat)', default: true,
+    regex: /\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,}\b|\bgithub_pat_[A-Za-z0-9_]{22,}\b/g,
+    replace: () => '{{VALUE}}' },
+
+  { id: 'google_apikey', label: 'Google API keys (AIza…)', default: true,
+    regex: /\bAIza[0-9A-Za-z_-]{35}\b/g, replace: () => '{{VALUE}}' },
+
+  { id: 'oauth_clientid', label: 'OAuth client IDs (Google …apps.googleusercontent.com)', default: true,
+    regex: /\b\d+-[a-z0-9]{20,}\.apps\.googleusercontent\.com\b/gi, replace: () => '{{VALUE}}' },
+
+  { id: 'stripe_key', label: 'Stripe keys (sk_ / pk_ / rk_)', default: true,
+    regex: /\b(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{16,}\b/g, replace: () => '{{VALUE}}' },
+
+  { id: 'bearer', label: 'Bearer / Basic auth tokens', default: true,
+    regex: /\b(Bearer|Basic)\s+[A-Za-z0-9._~+\/-]{12,}={0,2}/g,
+    replace: (m, p1) => p1 + ' {{VALUE}}' },
 
   { id: 'awskey', label: 'AWS access key', default: true,
     regex: /\bAKIA[0-9A-Z]{16}\b/g, replace: () => '{{VALUE}}' },
@@ -777,9 +812,38 @@ function censorText(text, customRules, maskStyle) {
   customRules.forEach(word => {
     const trimmed = word.trim();
     if (!trimmed) return;
-    let regex;
-    try { regex = new RegExp(trimmed, 'gi'); } catch { return; }
-    result = result.replace(regex, m => { count++; return applyMask(m, maskStyle); });
+
+    // Check if the rule is a key-value pattern (e.g. MY_API_KEY=value, DB_PASS:value)
+    // Supports '=' or ':' delimiters
+    const kvMatch = trimmed.match(/^([^=:]+)([=:].*)$/);
+    if (kvMatch) {
+      const key = kvMatch[1].trim();
+      try {
+        // Match key followed by optional spaces, equals/colon, optional spaces/quotes, and capturing the value
+        // Matches forms like: KEY=value, KEY="value", KEY: 'value', export KEY=value
+        const regex = new RegExp(`(^|\\b)(${key})\\s*([:=])\\s*("[^"]*"|'[^']*'|\\S+)`, 'gi');
+        result = result.replace(regex, (match, prefix, matchKey, separator, val) => {
+          count++;
+          // Unquote value if quoted to check its length/character layout for formatting mask
+          let cleanVal = val;
+          const quoteMatch = val.match(/^("([^"]*)"|'([^']*)')$/);
+          if (quoteMatch) {
+            cleanVal = quoteMatch[2] || quoteMatch[3] || '';
+          }
+          const masked = applyMask(cleanVal, maskStyle);
+          // Restore quotes if original value was quoted
+          const finalVal = quoteMatch ? (val.startsWith('"') ? `"${masked}"` : `'${masked}'`) : masked;
+          return prefix + matchKey + separator + finalVal;
+        });
+      } catch (e) {
+        // Skip invalid pattern fallback
+      }
+    } else {
+      // Standard rule: censor the matched pattern itself
+      let regex;
+      try { regex = new RegExp(trimmed, 'gi'); } catch { return; }
+      result = result.replace(regex, m => { count++; return applyMask(m, maskStyle); });
+    }
   });
 
   return { result, count };
